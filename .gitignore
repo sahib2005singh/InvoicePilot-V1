@@ -1,4 +1,6 @@
 venv/
 __pycache__/
 *.pyc
-pokemonDB_dataset.json
+user_data.json
+.env
+
