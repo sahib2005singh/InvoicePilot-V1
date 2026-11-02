@@ -1,4 +1,5 @@
 
+from unicodedata import name
 from pydoc import describe
 from enum import verify
 from h11._abnf import status_code
@@ -29,8 +30,6 @@ class UserInternal(BaseModel):
     email: Annotated[EmailStr, Field(..., description = "email of the user")]
     gender: Annotated[Literal['male', 'female', 'other'], Field(..., description="Gender of the user")]
     password: Annotated[SecretStr, Field(..., description="hashed password")]
-
- 
 
 class UserResponse(BaseModel):
     name: str
@@ -73,16 +72,48 @@ def get_current_user(encoded_token: Annotated[str, Depends(OAuth_scheme)]):
     email = decoded_token.get("sub")
     if not email or not isinstance(email,str):
         raise HTTPException(status_code = 401, detail = "email empty/not in jwt")
+    
     if not email in data:
         raise HTTPException(status_code = 401, detail = "User Does Not Exist")
     user = data[email]
-    return {**user, "email": email} 
+
+    internal = UserInternal(
+        name = user["name"],
+        email= email,
+        gender=user["gender"],
+        password=user["password"]
+    )
+    return {
+        "name": internal.name,
+        "email": internal.email,
+        "gender": internal.gender
+    }
 
 
-
-
-
-
+@app.post("/create_user", response_model= UserResponse)
+def create_user(user: UserRegister):
+    data = load_data()
+    email = user.email.lower().strip()
+    if email in data:
+        raise HTTPException(status_code = 400, detail = 'User Already Exists')
+    else:
+        hashed_password = PASSWORD_HASH.hash(user.password)
+        user_data = UserInternal(
+            name = user.name, 
+            email = email, 
+            gender= user.gender,
+            password= SecretStr(hashed_password))
+        data[email] = {
+            "name": user_data.name,
+            "gender": user_data.gender,
+            "password": user_data.password.get_secret_value()
+        }
+        save_data(data)
+        return {
+            "name": user_data.name,
+            "gender": user_data.gender,
+            "email": user_data.email   
+            }
 
 @app.post("/token")
 def login(form_data: Annotated[OAuth2PasswordRequestForm , Depends()]):
@@ -101,28 +132,6 @@ def login(form_data: Annotated[OAuth2PasswordRequestForm , Depends()]):
         "access_token" : create_token,
         "token_type" : "bearer"
     }
-
-    
-
-    
-
-
-@app.post("/create_user", response_model= UserResponse)
-def create_user(user: UserRegister):
-    data = load_data()
-    if user.email.lower().strip() in data:
-        raise HTTPException(status_code = 400, detail = 'User Already Exists')
-    else:
-        hashed_password = PASSWORD_HASH.hash(user.password)
-        user_data = {
-            "name": user.name,
-            "password": hashed_password,
-            "gender": user.gender
-        }
-        data[user.email.lower().strip()] = user_data
-        save_data(data)
-        return JSONResponse(status_code=201, content={"message": "Registration successful"})
-
 
 @app.get("/profile", response_model= UserResponse)
 def user_profile(current_user: Annotated[dict, Depends(get_current_user)]):
