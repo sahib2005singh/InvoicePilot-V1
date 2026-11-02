@@ -1,3 +1,5 @@
+
+from pydoc import describe
 from enum import verify
 from h11._abnf import status_code
 from starlette.types import Message
@@ -6,7 +8,7 @@ from datetime import datetime , timedelta, timezone
 from fastapi import FastAPI , Path , Query, HTTPException , Depends , Header
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer,OAuth2PasswordRequestForm
-from pydantic import BaseModel, EmailStr,Field
+from pydantic import BaseModel, EmailStr,Field, SecretStr
 from typing import Annotated, Literal, List, Dict
 import json
 import jwt
@@ -21,6 +23,14 @@ class UserRegister(BaseModel):
     email: EmailStr
     gender: Annotated[Literal['male', 'female', 'other'], Field(..., description = 'Gender of the user')]
     password: Annotated[str, Field(..., description="enter password")]
+
+class UserInternal(BaseModel):
+    name : Annotated[str, Field(..., description= "Name Of The User")]
+    email: Annotated[EmailStr, Field(..., description = "email of the user")]
+    gender: Annotated[Literal['male', 'female', 'other'], Field(..., description="Gender of the user")]
+    password: Annotated[SecretStr, Field(..., description="hashed password")]
+
+ 
 
 class UserResponse(BaseModel):
     name: str
@@ -61,9 +71,12 @@ def get_current_user(encoded_token: Annotated[str, Depends(OAuth_scheme)]):
         raise HTTPException(status_code = 401 , detail = "Could not validate credentials")
     data = load_data()
     email = decoded_token.get("sub")
+    if not email or not isinstance(email,str):
+        raise HTTPException(status_code = 401, detail = "email empty/not in jwt")
     if not email in data:
         raise HTTPException(status_code = 401, detail = "User Does Not Exist")
-    return data[email]
+    user = data[email]
+    return {**user, "email": email} 
 
 
 
