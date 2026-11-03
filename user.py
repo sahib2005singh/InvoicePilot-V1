@@ -10,7 +10,7 @@ from fastapi import FastAPI , Path , Query, HTTPException , Depends , Header
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer,OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr,Field, SecretStr
-from typing import Annotated, Literal, List, Dict
+from typing import Annotated, Literal, List, Dict, Optional
 import json
 import jwt
 from jwt.exceptions import InvalidTokenError
@@ -35,6 +35,11 @@ class UserResponse(BaseModel):
     name: str
     email: EmailStr 
     gender: str
+
+    
+class UpdateUser(BaseModel):
+    name: str | None
+    gender: Literal['male', 'female', 'other'] | None
     
 
 app = FastAPI()
@@ -137,3 +142,30 @@ def login(form_data: Annotated[OAuth2PasswordRequestForm , Depends()]):
 def user_profile(current_user: Annotated[dict, Depends(get_current_user)]):
     return current_user
         
+
+@app.patch("/user/me", response_model= UserResponse)
+def user_profile(current_user: Annotated[dict,Depends(get_current_user)], update: UpdateUser):
+    data = load_data()
+    email = current_user["email"]
+    if email not in data:
+        raise HTTPException(status_code = 401, detail = "You are not authorized")
+    changes = update.model_dump(exclude_unset=True)
+    if not changes:
+        raise HTTPException(status_code=400, detail="No changes provided")
+    for i in changes.values():
+        if i is None:
+            raise HTTPException(status_code = 400, detail = "you cannot change       to null value")
+        if i == "":
+            raise HTTPException(status_code = 400, detail = "you cannot change to empty string")    
+        if i.isspace():
+            raise HTTPException(status_code = 400, detail = "you cannot change to space")
+
+    user_record = data[email]
+    user_record.update(changes)
+    save_data(data)
+    return {
+        "email" : email,
+        "name" : user_record["name"],
+        "gender" : user_record["gender"]
+    }
+
