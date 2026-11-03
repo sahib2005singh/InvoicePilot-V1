@@ -40,6 +40,11 @@ class UserResponse(BaseModel):
 class UpdateUser(BaseModel):
     name: str | None
     gender: Literal['male', 'female', 'other'] | None
+
+class UpdatePassword(BaseModel):
+    current_password: str
+    new_password: str
+    confirm_password: str
     
 
 app = FastAPI()
@@ -169,3 +174,38 @@ def user_profile(current_user: Annotated[dict,Depends(get_current_user)], update
         "gender" : user_record["gender"]
     }
 
+
+@app.patch("/user/me/password")
+def update_password(currrent_user: Annotated[dict,Depends(get_current_user)], update: UpdatePassword):
+    data = load_data()
+    email = currrent_user["email"]
+    if email not in data:
+        raise HTTPException(status_code=401,detail = "Not authorized")
+    is_password_valid = PASSWORD_HASH.verify(update.current_password , data[email]["password"])
+    if not is_password_valid:
+        raise HTTPException(status_code = 401, detail = "password is incorrect")
+    if PASSWORD_HASH.verify(update.new_password , data[email]["password"]):
+        raise HTTPException(status_code = 400, detail = "You have entered same password")
+    if update.new_password != update.confirm_password:
+        raise HTTPException(status_code= 401, detail = "passwords do not match")
+    new_password = PASSWORD_HASH.hash(update.new_password)
+    user_record = data[email]
+    user_record["password"] = new_password
+    save_data(data)
+    return {"message" : "Password updated successfully"}
+
+
+
+
+
+
+
+@app.delete("/user/me")
+def delete_user(current_user: Annotated[dict, Depends(get_current_user)]):
+    data = load_data()
+    email = current_user["email"]
+    if email not in data:
+        raise HTTPException(status_code=401, detail = "User dosen't exists")
+    data.pop(email)
+    save_data(data)
+    return JSONResponse(status_code=200, content={"message": "User deleted successfully"})
